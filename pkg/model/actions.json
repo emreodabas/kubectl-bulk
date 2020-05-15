@@ -1,0 +1,19 @@
+{
+  "actions": [
+    {
+      "name": "GET",
+      "desc": "Getting bulk information of resources",
+      "sample": " kubectl-bulk get po images "
+    },
+    {
+      "name": "UPDATE",
+      "desc": "Getting bulk information of resources",
+      "sample": " kubectl-bulk get po images "
+    },
+    {
+      "name": "DELETE",
+      "desc": "Getting bulk information of resources",
+      "sample": " kubectl-bulk get po images "
+    }
+  ]
+}
