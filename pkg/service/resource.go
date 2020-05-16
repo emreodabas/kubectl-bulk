@@ -34,7 +34,8 @@ func GetResourceList() ([]model.Resource, error) {
 		return resourceList, nil
 	}
 
-	var result []model.Resource
+	result := make(map[string]model.Resource) // resource could have multi group
+
 	clientset, err := createClientset()
 	if err != nil {
 		return nil, err
@@ -44,20 +45,23 @@ func GetResourceList() ([]model.Resource, error) {
 	for _, res := range resources {
 		if res.APIResources != nil && len(res.APIResources) > 0 {
 
-			result = append(result,
-				model.Resource{res.APIResources[0].Name, res.APIResources[0].Namespaced, res.APIResources[0].Kind, res.APIResources[0].ShortNames, res.APIResources[0].Verbs})
+			for i := 0; i < len(res.APIResources); i++ {
+
+				result[res.APIResources[i].Name] =
+					model.Resource{res.APIResources[i].Name, res.APIResources[i].Namespaced, res.APIResources[i].Kind, res.APIResources[i].ShortNames, res.APIResources[i].Verbs}
+			}
 		}
-		//else {
-		//	for i := 0; i < len(res.GroupVersion); i++ {
-		//		resources = append(resources, )
-		//	}
-		//}
 	}
-	resourceList = result
-	return result, nil
+
+	for i := range result {
+		resourceList = append(resourceList, result[i])
+
+	}
+	return resourceList, nil
 }
 
 func GetResource(resourceName string) (model.Resource, error) {
+	//TODO could be cached
 	resourceList, _ := GetResourceList()
 	resourceName = strings.ToLower(resourceName)
 	fmt.Println("SIZE", len(resourceList))
