@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
 	"github.com/ktr0731/go-fuzzyfinder"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"log"
 	"strconv"
 	"strings"
@@ -54,7 +55,7 @@ func ShowActionList() model.Action {
 	return actions[idx[0]]
 }
 
-func ShowList(list []model.Resource) model.Resource {
+func ShowResourceList(list []model.Resource) model.Resource {
 	idx, err := fuzzyfinder.FindMulti(
 		list,
 		func(i int) string {
@@ -72,4 +73,47 @@ func ShowList(list []model.Resource) model.Resource {
 		log.Fatal(err)
 	}
 	return list[idx[0]]
+}
+
+func ShowList(list []string) string {
+	idx, err := fuzzyfinder.FindMulti(
+		list,
+		func(i int) string {
+			return list[i]
+		},
+		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
+			if i == -1 {
+				return ""
+			}
+			return fmt.Sprintf("Name: %s ",
+				strings.SplitAfter(list[i], "> ")[0])
+		}))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return list[idx[0]]
+}
+
+func ShowUnstructuredList(filterList []string, list []unstructured.Unstructured) string {
+
+	idx, err := fuzzyfinder.FindMulti(
+		filterList,
+		func(i int) string {
+			return filterList[i]
+		},
+		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
+			if i == -1 {
+				return ""
+			}
+			var res = "NAME \t\t NAMESPACE \n"
+			for _, item := range list {
+				res = res + item.GetName() + "  " + item.GetNamespace() + "\n"
+			}
+			return res
+		}))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return filterList[idx[0]]
+
 }

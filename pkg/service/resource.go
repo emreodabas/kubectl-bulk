@@ -3,27 +3,39 @@ package service
 import (
 	"fmt"
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"strings"
 )
 
-func createClientset() (*kubernetes.Clientset, error) {
+var clientSet *kubernetes.Clientset
+var dinamic dynamic.Interface
+
+func getClientSet() (dynamic.Interface, *kubernetes.Clientset, error) {
+	if clientSet != nil && dinamic != nil {
+		return dinamic, clientSet, nil
+	}
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	configOverrides := &clientcmd.ConfigOverrides{}
 	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 
 	config, err := kubeConfig.ClientConfig()
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("Kubernetes Client could not configured")
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
+	clientSet, err = kubernetes.NewForConfig(config)
+	dinamic, err = dynamic.NewForConfig(config)
+
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("Kubernetes Client could not configured")
 	}
 
-	return clientset, nil
+	return dinamic, clientSet, nil
 }
 
 var resourceList []model.Resource
@@ -36,7 +48,7 @@ func GetResourceList() ([]model.Resource, error) {
 
 	result := make(map[string]model.Resource) // resource could have multi group
 
-	clientset, err := createClientset()
+	_, clientset, err := getClientSet()
 	if err != nil {
 		return nil, err
 	}
@@ -44,11 +56,34 @@ func GetResourceList() ([]model.Resource, error) {
 
 	for _, res := range resources {
 		if res.APIResources != nil && len(res.APIResources) > 0 {
-
+			groupVersion, _ := schema.ParseGroupVersion(res.GroupVersion)
 			for i := 0; i < len(res.APIResources); i++ {
+				groupV := result[res.APIResources[i].Name].GroupVersion
+				if groupV != nil {
+					groupV = append(groupV, groupVersion)
+					result[res.APIResources[i].Name] =
+						model.Resource{res.APIResources[i].Name,
+							res.APIResources[i].Namespaced,
+							res.APIResources[i].Kind,
+							res.APIResources[i].ShortNames,
+							res.APIResources[i].Verbs,
+							res.GroupVersionKind(),
+							groupV,
+						}
+				} else {
+					var groupV = []schema.GroupVersion{groupVersion}
+					result[res.APIResources[i].Name] =
+						model.Resource{res.APIResources[i].Name,
+							res.APIResources[i].Namespaced,
+							res.APIResources[i].Kind,
+							res.APIResources[i].ShortNames,
+							res.APIResources[i].Verbs,
+							res.GroupVersionKind(),
+							groupV,
+						}
 
-				result[res.APIResources[i].Name] =
-					model.Resource{res.APIResources[i].Name, res.APIResources[i].Namespaced, res.APIResources[i].Kind, res.APIResources[i].ShortNames, res.APIResources[i].Verbs}
+				}
+
 			}
 		}
 	}
@@ -64,15 +99,77 @@ func GetResource(resourceName string) (model.Resource, error) {
 	//TODO could be cached
 	resourceList, _ := GetResourceList()
 	resourceName = strings.ToLower(resourceName)
-	fmt.Println("SIZE", len(resourceList))
 	for i := 0; i < len(resourceList); i++ {
-		fmt.Println(i, "-->", resourceList[i].Name, resourceList[i].ShortName)
 		if strings.ToLower(resourceList[i].Name) == resourceName || contains(resourceList[i].ShortName, resourceName) {
-			fmt.Println(resourceList[i], "is selected")
 			return resourceList[i], nil
 		}
 	}
 	return model.Resource{}, fmt.Errorf(resourceName + " is not a valid resource.")
+}
+
+func FetchInstances(resource model.Resource, namespace string) ([]unstructured.Unstructured, map[string]interface{}, error) {
+
+	dyn, _, err := getClientSet()
+	var res []unstructured.Unstructured
+	var content map[string]interface{}
+	var list *unstructured.UnstructuredList
+	if err != nil {
+		return nil, nil, fmt.Errorf("K8s client could not created ")
+	}
+	for i := 0; i < len(resource.GroupVersion); i++ {
+		gv := resource.GroupVersion[i]
+
+		resourceInterface := dyn.Resource(schema.GroupVersionResource{
+			Group:    gv.Group,
+			Version:  gv.Version,
+			Resource: resource.Name,
+		})
+		if namespace != "" {
+			list, err = resourceInterface.Namespace(namespace).List(v1.ListOptions{
+				Limit:    250,
+				Continue: "",
+			})
+
+		} else {
+			list, err = resourceInterface.List(v1.ListOptions{
+				Limit:    250,
+				Continue: "",
+			})
+
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("someting goes wrong while fetching ", resource.Name)
+		}
+
+		content = list.UnstructuredContent()
+		res = append(res, list.Items...)
+	}
+	return res, content, nil
+}
+
+func GetNamespaces() ([]string, error) {
+	var res []string
+	_, clientset, err := getClientSet()
+	if err != nil {
+		return nil, fmt.Errorf("K8s client could not created")
+	}
+	var next string
+
+	for {
+		list, _ := clientset.CoreV1().Namespaces().List(v1.ListOptions{
+			Limit:    250,
+			Continue: next,
+		})
+		for i := 0; i < len(list.Items); i++ {
+			res = append(res, list.Items[i].Name)
+		}
+
+		next = list.GetContinue()
+		if next == "" {
+			break
+		}
+	}
+	return res, nil
 }
 
 func contains(arr []string, str string) bool {

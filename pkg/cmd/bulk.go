@@ -6,6 +6,7 @@ import (
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
 	"github.com/emreodabas/kubectl-bulk/pkg/service"
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
 
@@ -57,14 +58,44 @@ func run(_ *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		resource = interaction.ShowList(list)
+		resource = interaction.ShowResourceList(list)
 	} else {
 		resource, err = service.GetResource(resourceArg)
 		if err != nil {
 			return err
 		}
 	}
+	fmt.Println("action", action.Name, "resource", resource.Name)
 
-	fmt.Println("action", action, "resource", resource)
+	sourceSelection(resource)
+
 	return nil
+}
+
+func sourceSelection(resource model.Resource) ([]unstructured.Unstructured, error) {
+	// filter or multi selection could be ask to user
+	var list []unstructured.Unstructured
+	var err error
+	if resource.Namespaced {
+		namespaces, err := service.GetNamespaces()
+		selectedNamespace := interaction.ShowList(namespaces)
+		fmt.Println(selectedNamespace)
+		if err != nil {
+			return list, fmt.Errorf("Namespace list could not fetch")
+		}
+		list, _, err = service.FetchInstances(resource, selectedNamespace)
+
+	} else {
+		list, _, err = service.FetchInstances(resource, "")
+	}
+
+	filterlist, err := model.Filterlist()
+	if err != nil {
+		return nil, fmt.Errorf("filter list could not fetched", err)
+	}
+	filterResult := interaction.ShowUnstructuredList(filterlist, list)
+	fmt.Println(filterResult)
+
+	return list, err
+
 }

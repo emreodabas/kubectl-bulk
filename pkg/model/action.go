@@ -30,7 +30,6 @@ func Actionlist() ([]Action, error) {
 	if err != nil {
 		fmt.Errorf("Marshall problem")
 	}
-	fmt.Println(actions)
 	return actions.Actions, nil
 }
 
