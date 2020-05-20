@@ -75,6 +75,26 @@ func ShowResourceList(list []model.Resource) model.Resource {
 	return list[idx[0]]
 }
 
+func ShowFilterList(list []model.Filter) model.Filter {
+	idx, err := fuzzyfinder.FindMulti(
+		list,
+		func(i int) string {
+			return list[i].Name
+		},
+		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
+			if i == -1 {
+				return ""
+			}
+			return fmt.Sprintf("Name: %s \nDesc: %s  \nSample: %s ",
+				strings.SplitAfter(list[i].Name, "> ")[0],
+				list[i].Description, list[i].Sample)
+		}))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return list[idx[0]]
+}
+
 func ShowList(list []string) string {
 	idx, err := fuzzyfinder.FindMulti(
 		list,
@@ -115,5 +135,10 @@ func ShowUnstructuredList(filterList []string, list []unstructured.Unstructured)
 		log.Fatal(err)
 	}
 	return filterList[idx[0]]
-
 }
+
+//func getPromtValue(info string) string {
+//
+//
+//	return ""
+//}

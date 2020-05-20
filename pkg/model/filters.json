@@ -1,0 +1,28 @@
+{
+  "actions": [
+    {
+      "name": "label",
+      "desc": "filter with Label ",
+      "sample": "kubectl get pods -l app=nginx ",
+      "needFilter": true
+    },
+    {
+      "name": "field-selector",
+      "desc": "filter with field selector",
+      "sample": " kubectl get pods --field-selector=\"status.phase!=Running\"",
+      "needFilter": true
+    },
+    {
+      "name": "multi-select",
+      "desc": "Multi select from resource list",
+      "sample": "--",
+      "needFilter": false
+    },
+    {
+      "name": "grep",
+      "desc": "using grep function from resource list",
+      "sample": "--",
+      "needFilter": false
+    }
+  ]
+}

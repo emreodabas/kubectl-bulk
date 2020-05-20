@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
+	"github.com/emreodabas/kubectl-bulk/pkg/utils"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -100,21 +101,22 @@ func GetResource(resourceName string) (model.Resource, error) {
 	resourceList, _ := GetResourceList()
 	resourceName = strings.ToLower(resourceName)
 	for i := 0; i < len(resourceList); i++ {
-		if strings.ToLower(resourceList[i].Name) == resourceName || contains(resourceList[i].ShortName, resourceName) {
+		if strings.ToLower(resourceList[i].Name) == resourceName || utils.Contains(resourceList[i].ShortName, resourceName) {
 			return resourceList[i], nil
 		}
 	}
 	return model.Resource{}, fmt.Errorf(resourceName + " is not a valid resource.")
 }
 
-func FetchInstances(resource model.Resource, namespace string) ([]unstructured.Unstructured, map[string]interface{}, error) {
+func FetchInstances(command *model.Command) error {
 
 	dyn, _, err := getClientSet()
 	var res []unstructured.Unstructured
-	var content map[string]interface{}
 	var list *unstructured.UnstructuredList
+	resource := command.Resource
+	namespace := command.Namespace
 	if err != nil {
-		return nil, nil, fmt.Errorf("K8s client could not created ")
+		return fmt.Errorf("K8s client could not created ")
 	}
 	for i := 0; i < len(resource.GroupVersion); i++ {
 		gv := resource.GroupVersion[i]
@@ -124,7 +126,7 @@ func FetchInstances(resource model.Resource, namespace string) ([]unstructured.U
 			Version:  gv.Version,
 			Resource: resource.Name,
 		})
-		if namespace != "" {
+		if namespace != "" || namespace != "all-namespaces[-A]" {
 			list, err = resourceInterface.Namespace(namespace).List(v1.ListOptions{
 				Limit:    250,
 				Continue: "",
@@ -138,17 +140,18 @@ func FetchInstances(resource model.Resource, namespace string) ([]unstructured.U
 
 		}
 		if err != nil {
-			return nil, nil, fmt.Errorf("someting goes wrong while fetching ", resource.Name)
+			return fmt.Errorf("someting goes wrong while fetching ", resource.Name)
 		}
 
-		content = list.UnstructuredContent()
 		res = append(res, list.Items...)
 	}
-	return res, content, nil
+	command.List = res
+	return nil
 }
 
 func GetNamespaces() ([]string, error) {
 	var res []string
+	res = append(res, "all-namespaces[-A]")
 	_, clientset, err := getClientSet()
 	if err != nil {
 		return nil, fmt.Errorf("K8s client could not created")
@@ -170,13 +173,4 @@ func GetNamespaces() ([]string, error) {
 		}
 	}
 	return res, nil
-}
-
-func contains(arr []string, str string) bool {
-	for _, a := range arr {
-		if a == str {
-			return true
-		}
-	}
-	return false
 }

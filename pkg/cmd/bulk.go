@@ -33,8 +33,7 @@ func NewBulkCommand(streams genericclioptions.IOStreams) *cobra.Command {
 func run(_ *cobra.Command, args []string) error {
 	//TODO logging and test need to be done
 	var actionArg, resourceArg string
-	var action model.Action
-	var resource model.Resource
+	var command model.Command
 	var err error
 	if len(args) == 1 {
 		actionArg = args[0]
@@ -43,9 +42,9 @@ func run(_ *cobra.Command, args []string) error {
 	}
 
 	if actionArg == "" {
-		action = interaction.ShowActionList()
+		command.Action = interaction.ShowActionList()
 	} else {
-		action, err = model.GetAction(actionArg)
+		command.Action, err = model.GetAction(actionArg)
 		if err != nil {
 			return err
 		}
@@ -58,44 +57,44 @@ func run(_ *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		resource = interaction.ShowResourceList(list)
+		command.Resource = interaction.ShowResourceList(list)
 	} else {
-		resource, err = service.GetResource(resourceArg)
+		command.Resource, err = service.GetResource(resourceArg)
 		if err != nil {
 			return err
 		}
 	}
-	fmt.Println("action", action.Name, "resource", resource.Name)
+	fmt.Println("action", command.Action.Name, "resource", command.Resource.Name)
 
-	sourceSelection(resource)
+	sourceSelection(&command)
 
 	return nil
 }
 
-func sourceSelection(resource model.Resource) ([]unstructured.Unstructured, error) {
+func sourceSelection(command *model.Command) ([]unstructured.Unstructured, error) {
 	// filter or multi selection could be ask to user
-	var list []unstructured.Unstructured
 	var err error
-	if resource.Namespaced {
+	if command.Resource.Namespaced {
 		namespaces, err := service.GetNamespaces()
-		selectedNamespace := interaction.ShowList(namespaces)
-		fmt.Println(selectedNamespace)
+		command.Namespace = interaction.ShowList(namespaces)
 		if err != nil {
-			return list, fmt.Errorf("Namespace list could not fetch")
+			return command.List, fmt.Errorf("Namespace list could not fetch")
 		}
-		list, _, err = service.FetchInstances(resource, selectedNamespace)
+		err = service.FetchInstances(command)
 
 	} else {
-		list, _, err = service.FetchInstances(resource, "")
+		err = service.FetchInstances(command)
+	}
+	if err != nil {
+		fmt.Errorf("Error occured while fetching resource", err)
 	}
 
-	filterlist, err := model.Filterlist()
+	filterlist, err := model.Filterlist(command.Resource.Verbs)
 	if err != nil {
 		return nil, fmt.Errorf("filter list could not fetched", err)
 	}
-	filterResult := interaction.ShowUnstructuredList(filterlist, list)
-	fmt.Println(filterResult)
-
-	return list, err
+	command.Filter = interaction.ShowFilterList(filterlist)
+	service.DoFilter(command)
+	return command.List, err
 
 }
