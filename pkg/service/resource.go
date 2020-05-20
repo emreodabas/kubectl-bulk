@@ -110,14 +110,28 @@ func GetResource(resourceName string) (model.Resource, error) {
 
 func FetchInstances(command *model.Command) error {
 
-	dyn, _, err := getClientSet()
 	var res []unstructured.Unstructured
 	var list *unstructured.UnstructuredList
 	resource := command.Resource
 	namespace := command.Namespace
+	dyn, _, err := getClientSet()
 	if err != nil {
 		return fmt.Errorf("K8s client could not created ")
 	}
+
+	var next string
+	options := v1.ListOptions{
+		Limit:    250,
+		Continue: next,
+	}
+	if command.Label != "" {
+		options.LabelSelector = command.Label
+	}
+
+	if command.FieldSelector != "" {
+		options.FieldSelector = command.FieldSelector
+	}
+
 	for i := 0; i < len(resource.GroupVersion); i++ {
 		gv := resource.GroupVersion[i]
 
@@ -126,26 +140,32 @@ func FetchInstances(command *model.Command) error {
 			Version:  gv.Version,
 			Resource: resource.Name,
 		})
-		if namespace != "" || namespace != "all-namespaces[-A]" {
-			list, err = resourceInterface.Namespace(namespace).List(v1.ListOptions{
-				Limit:    250,
-				Continue: "",
-			})
-
+		if namespace != "all-namespaces[-A]" {
+			for {
+				list, err = resourceInterface.Namespace(namespace).List(options)
+				res = append(res, list.Items...)
+				next = list.GetContinue()
+				if next == "" {
+					break
+				}
+			}
 		} else {
-			list, err = resourceInterface.List(v1.ListOptions{
-				Limit:    250,
-				Continue: "",
-			})
-
+			for {
+				list, err = resourceInterface.List(options)
+				res = append(res, list.Items...)
+				next = list.GetContinue()
+				if next == "" {
+					break
+				}
+			}
 		}
+
 		if err != nil {
 			return fmt.Errorf("someting goes wrong while fetching ", resource.Name)
 		}
 
-		res = append(res, list.Items...)
 	}
-	command.List = res
+	command.List = utils.Unique(list)
 	return nil
 }
 

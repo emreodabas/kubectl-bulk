@@ -6,7 +6,6 @@ import (
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
 	"github.com/emreodabas/kubectl-bulk/pkg/service"
 	"github.com/spf13/cobra"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
 
@@ -41,15 +40,6 @@ func run(_ *cobra.Command, args []string) error {
 		actionArg, resourceArg = args[0], args[1]
 	}
 
-	if actionArg == "" {
-		command.Action = interaction.ShowActionList()
-	} else {
-		command.Action, err = model.GetAction(actionArg)
-		if err != nil {
-			return err
-		}
-	}
-
 	if resourceArg == "" {
 		list, err := service.GetResourceList()
 		fmt.Println("SIZE", len(list))
@@ -64,21 +54,32 @@ func run(_ *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	fmt.Println("action", command.Action.Name, "resource", command.Resource.Name)
+	//fmt.Println("action", command.Action.Name, "resource", command.Resource.Name)
 
 	sourceSelection(&command)
+	err = Filter(&command)
+	//action time
+	if actionArg == "" {
+		command.Action = interaction.ShowActionList()
+	} else {
+		command.Action, err = model.GetAction(actionArg)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
-func sourceSelection(command *model.Command) ([]unstructured.Unstructured, error) {
+func sourceSelection(command *model.Command) error {
 	// filter or multi selection could be ask to user
 	var err error
 	if command.Resource.Namespaced {
 		namespaces, err := service.GetNamespaces()
 		command.Namespace = interaction.ShowList(namespaces)
 		if err != nil {
-			return command.List, fmt.Errorf("Namespace list could not fetch")
+
+			return fmt.Errorf("Namespace list could not fetch")
 		}
 		err = service.FetchInstances(command)
 
@@ -88,13 +89,21 @@ func sourceSelection(command *model.Command) ([]unstructured.Unstructured, error
 	if err != nil {
 		fmt.Errorf("Error occured while fetching resource", err)
 	}
+	return err
 
+}
+
+func Filter(command *model.Command) error {
 	filterlist, err := model.Filterlist(command.Resource.Verbs)
 	if err != nil {
-		return nil, fmt.Errorf("filter list could not fetched", err)
+		return fmt.Errorf("filter list could not fetched", err)
 	}
 	command.Filter = interaction.ShowFilterList(filterlist)
 	service.DoFilter(command)
-	return command.List, err
+	var selection = []string{"more filter", "action time"}
 
+	if interaction.ShowUnstructuredList(command.List, selection) == "more filter" {
+		Filter(command)
+	}
+	return nil
 }

@@ -2,7 +2,10 @@ package interaction
 
 import (
 	"fmt"
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
+	"github.com/fatih/color"
+	"github.com/gosuri/uitable"
 	"github.com/ktr0731/go-fuzzyfinder"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"log"
@@ -114,27 +117,22 @@ func ShowList(list []string) string {
 	return list[idx[0]]
 }
 
-func ShowUnstructuredList(filterList []string, list []unstructured.Unstructured) string {
+func ShowUnstructuredList(list []unstructured.Unstructured, selectList []string) string {
 
-	idx, err := fuzzyfinder.FindMulti(
-		filterList,
-		func(i int) string {
-			return filterList[i]
-		},
-		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
-			if i == -1 {
-				return ""
-			}
-			var res = "NAME \t\t NAMESPACE \n"
-			for _, item := range list {
-				res = res + item.GetName() + "  " + item.GetNamespace() + "\n"
-			}
-			return res
-		}))
-	if err != nil {
-		log.Fatal(err)
+	table := uitable.New()
+	table.AddRow("NAME", "NAMESPACE")
+	for _, item := range list {
+		table.AddRow(item.GetName(), item.GetNamespace())
 	}
-	return filterList[idx[0]]
+	fmt.Println("\n\n")
+	fmt.Fprintln(color.Output, table)
+	result := ""
+	prompt := &survey.Select{
+		Message: "Next Step:",
+		Options: selectList,
+	}
+	survey.AskOne(prompt, &result)
+	return result
 }
 
 //func getPromtValue(info string) string {
