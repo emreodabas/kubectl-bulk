@@ -5,11 +5,12 @@ import (
 )
 
 type Command struct {
-	Namespace     string
-	Label         string
-	FieldSelector string
-	Action        Action
-	Resource      Resource
-	List          []unstructured.Unstructured
-	Filter        Filter
+	Namespace       string
+	Label           string
+	FieldSelector   string
+	Action          Action
+	Resource        Resource
+	List            []unstructured.Unstructured
+	Filter          Filter
+	SelectedFilters []Filter
 }

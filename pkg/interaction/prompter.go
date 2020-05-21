@@ -124,6 +124,9 @@ func ShowUnstructuredList(list []unstructured.Unstructured, selectList []string)
 	for _, item := range list {
 		table.AddRow(item.GetName(), item.GetNamespace())
 	}
+	if len(list) == 0 {
+		table.AddRow(" No Result \n")
+	}
 	fmt.Println("\n\n")
 	fmt.Fprintln(color.Output, table)
 	result := ""

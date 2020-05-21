@@ -57,7 +57,11 @@ func run(_ *cobra.Command, args []string) error {
 	//fmt.Println("action", command.Action.Name, "resource", command.Resource.Name)
 
 	sourceSelection(&command)
+
 	err = Filter(&command)
+	if err != nil {
+		return err
+	}
 	//action time
 	if actionArg == "" {
 		command.Action = interaction.ShowActionList()
@@ -87,7 +91,7 @@ func sourceSelection(command *model.Command) error {
 		err = service.FetchInstances(command)
 	}
 	if err != nil {
-		fmt.Errorf("Error occured while fetching resource", err)
+		return err
 	}
 	return err
 
@@ -98,12 +102,20 @@ func Filter(command *model.Command) error {
 	if err != nil {
 		return fmt.Errorf("filter list could not fetched", err)
 	}
+
 	command.Filter = interaction.ShowFilterList(filterlist)
-	service.DoFilter(command)
+	err = service.DoFilter(command)
+	if err != nil {
+		return err
+	}
 	var selection = []string{"more filter", "action time"}
 
 	if interaction.ShowUnstructuredList(command.List, selection) == "more filter" {
-		Filter(command)
+		fmt.Println("CAREFUL--> if you select previous FILTERS it will be OVERRIDED.")
+		err = Filter(command)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

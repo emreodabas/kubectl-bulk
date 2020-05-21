@@ -143,6 +143,9 @@ func FetchInstances(command *model.Command) error {
 		if namespace != "all-namespaces[-A]" {
 			for {
 				list, err = resourceInterface.Namespace(namespace).List(options)
+				if err != nil {
+					return err
+				}
 				res = append(res, list.Items...)
 				next = list.GetContinue()
 				if next == "" {
@@ -152,16 +155,20 @@ func FetchInstances(command *model.Command) error {
 		} else {
 			for {
 				list, err = resourceInterface.List(options)
-				res = append(res, list.Items...)
-				next = list.GetContinue()
-				if next == "" {
+				if err != nil {
+					return err
+				}
+
+				if list != nil {
+					res = append(res, list.Items...)
+					next = list.GetContinue()
+					if next == "" {
+						break
+					}
+				} else {
 					break
 				}
 			}
-		}
-
-		if err != nil {
-			return fmt.Errorf("someting goes wrong while fetching ", resource.Name)
 		}
 
 	}

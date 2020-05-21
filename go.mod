@@ -28,4 +28,5 @@ require (
 	k8s.io/client-go v0.17.0
 	k8s.io/sample-cli-plugin v0.17.0
 	k8s.io/utils v0.0.0-20191218082557-f07c713de883 // indirect
+	sigs.k8s.io/kustomize v2.0.3+incompatible
 )
