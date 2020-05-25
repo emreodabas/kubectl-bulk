@@ -1,5 +1,13 @@
 {
+
+
   "actions": [
+    {
+      "name": "none",
+      "desc": "no filter",
+      "sample": "--",
+      "needFilter": false
+    },
     {
       "name": "label",
       "desc": "filter with Label ",
@@ -24,5 +32,6 @@
       "sample": "--",
       "needFilter": false
     }
+
   ]
 }

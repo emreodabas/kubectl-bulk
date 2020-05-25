@@ -30,8 +30,9 @@ func DoFilter(command *model.Command) error {
 	case "multi-select":
 		promptMultiSelect(command)
 		break
-	default:
-		return fmt.Errorf("Filter option is not implemented yet.")
+	case "none":
+		fmt.Println("No Filter selected")
+		break
 	}
 	command.SelectedFilters = append(command.SelectedFilters, command.Filter)
 	return nil
@@ -91,8 +92,9 @@ func promptMultiSelect(command *model.Command) error {
 	}
 
 	prompt := &survey.MultiSelect{
-		Message: "Which resources do you select for bulk actions? \n ** [Space] for select-deselect \n ** [Enter] for finalize selection :",
-		Options: listStr,
+		Message:  "Which resources do you select for bulk actions? \n ** [Space] for select-deselect \n ** [Enter] for finalize selection :",
+		Options:  listStr,
+		PageSize: 20,
 	}
 	survey.AskOne(prompt, &resultStr)
 

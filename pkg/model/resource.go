@@ -1,6 +1,8 @@
 package model
 
-import "k8s.io/apimachinery/pkg/runtime/schema"
+import (
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
 
 type Resource struct {
 	Name             string

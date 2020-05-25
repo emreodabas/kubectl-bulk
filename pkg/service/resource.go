@@ -1,20 +1,25 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
 	"github.com/emreodabas/kubectl-bulk/pkg/utils"
+	"io/ioutil"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"os"
 	"strings"
 )
 
 var clientSet *kubernetes.Clientset
 var dinamic dynamic.Interface
+
+const path = "/tmp/kubectl-bulk/.api-resource-cache.json"
 
 func getClientSet() (dynamic.Interface, *kubernetes.Clientset, error) {
 	if clientSet != nil && dinamic != nil {
@@ -42,8 +47,12 @@ func getClientSet() (dynamic.Interface, *kubernetes.Clientset, error) {
 var resourceList []model.Resource
 
 func GetResourceList() ([]model.Resource, error) {
+	if cacheFileExist() {
+		resourceList, err := readResourcelist()
 
-	if resourceList != nil {
+		if err != nil {
+			return nil, err
+		}
 		return resourceList, nil
 	}
 
@@ -59,10 +68,10 @@ func GetResourceList() ([]model.Resource, error) {
 		if res.APIResources != nil && len(res.APIResources) > 0 {
 			groupVersion, _ := schema.ParseGroupVersion(res.GroupVersion)
 			for i := 0; i < len(res.APIResources); i++ {
-				groupV := result[res.APIResources[i].Name].GroupVersion
+				groupV := result[res.APIResources[i].Kind].GroupVersion
 				if groupV != nil {
 					groupV = append(groupV, groupVersion)
-					result[res.APIResources[i].Name] =
+					result[res.APIResources[i].Kind] =
 						model.Resource{res.APIResources[i].Name,
 							res.APIResources[i].Namespaced,
 							res.APIResources[i].Kind,
@@ -73,7 +82,7 @@ func GetResourceList() ([]model.Resource, error) {
 						}
 				} else {
 					var groupV = []schema.GroupVersion{groupVersion}
-					result[res.APIResources[i].Name] =
+					result[res.APIResources[i].Kind] =
 						model.Resource{res.APIResources[i].Name,
 							res.APIResources[i].Namespaced,
 							res.APIResources[i].Kind,
@@ -82,9 +91,7 @@ func GetResourceList() ([]model.Resource, error) {
 							res.GroupVersionKind(),
 							groupV,
 						}
-
 				}
-
 			}
 		}
 	}
@@ -93,7 +100,55 @@ func GetResourceList() ([]model.Resource, error) {
 		resourceList = append(resourceList, result[i])
 
 	}
+	saveResourcelist(resourceList)
 	return resourceList, nil
+}
+
+func saveResourcelist(resourceList []model.Resource) {
+
+	marshal, _ := json.Marshal(resourceList)
+
+	f, _ := os.Create(path)
+	defer f.Close()
+
+	f.Write(marshal)
+	f.Sync()
+
+}
+
+func cacheFileExist() bool {
+
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+
+}
+
+func readResourcelist() ([]model.Resource, error) {
+	// Open our jsonFile
+	jsonFile, err := os.Open(path)
+	// if we os.Open returns an error then handle it
+	if err != nil {
+		fmt.Println("ERROR!!")
+		fmt.Println(err)
+		return []model.Resource{}, err
+	}
+
+	defer jsonFile.Close()
+	// read our opened xmlFile as a byte array.
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+	// we initialize our Users array
+	var resources []model.Resource
+
+	// we unmarshal our byteArray which contains our
+	// jsonFile's content into 'users' which we defined above
+	err = json.Unmarshal(byteValue, &resources)
+	if err != nil {
+		fmt.Errorf("Marshall problem")
+	}
+	return resources, nil
 }
 
 func GetResource(resourceName string) (model.Resource, error) {
@@ -101,7 +156,7 @@ func GetResource(resourceName string) (model.Resource, error) {
 	resourceList, _ := GetResourceList()
 	resourceName = strings.ToLower(resourceName)
 	for i := 0; i < len(resourceList); i++ {
-		if strings.ToLower(resourceList[i].Name) == resourceName || utils.Contains(resourceList[i].ShortName, resourceName) {
+		if strings.ToLower(resourceList[i].Kind) == resourceName || utils.Contains(resourceList[i].ShortName, resourceName) {
 			return resourceList[i], nil
 		}
 	}
@@ -114,7 +169,7 @@ func FetchInstances(command *model.Command) error {
 	var list *unstructured.UnstructuredList
 	resource := command.Resource
 	namespace := command.Namespace
-	dyn, _, err := getClientSet()
+	clientset, _, err := getClientSet()
 	if err != nil {
 		return fmt.Errorf("K8s client could not created ")
 	}
@@ -135,7 +190,7 @@ func FetchInstances(command *model.Command) error {
 	for i := 0; i < len(resource.GroupVersion); i++ {
 		gv := resource.GroupVersion[i]
 
-		resourceInterface := dyn.Resource(schema.GroupVersionResource{
+		resourceInterface := clientset.Resource(schema.GroupVersionResource{
 			Group:    gv.Group,
 			Version:  gv.Version,
 			Resource: resource.Name,
@@ -200,4 +255,50 @@ func GetNamespaces() ([]string, error) {
 		}
 	}
 	return res, nil
+}
+
+func UpdateResources(command model.Command) error {
+
+	/*
+		setAnnotations
+		setLabels
+		updateUnstructred Content
+		 	specs
+
+	*/
+
+	clientset, _, err := getClientSet()
+	resource := command.Resource
+
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(resource.GroupVersion); i++ {
+		gv := resource.GroupVersion[i]
+		meta := v1.TypeMeta{
+			Kind:       resource.Kind,
+			APIVersion: gv.Version,
+		}
+		options := v1.UpdateOptions{
+			TypeMeta:     meta,
+			DryRun:       nil,
+			FieldManager: "",
+		}
+
+		resourceInterface := clientset.Resource(schema.GroupVersionResource{
+			Group:    gv.Group,
+			Version:  gv.Version,
+			Resource: resource.Name,
+		})
+
+		list := command.List
+		for i := 0; i < len(list); i++ {
+			resourceInterface.Update(&list[i], options)
+			if err != nil {
+				return err
+			}
+		}
+
+	}
+	return nil
 }

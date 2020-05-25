@@ -54,7 +54,6 @@ func run(_ *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	//fmt.Println("action", command.Action.Name, "resource", command.Resource.Name)
 
 	sourceSelection(&command)
 
@@ -62,16 +61,30 @@ func run(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	//action time
 	if actionArg == "" {
 		command.Action = interaction.ShowActionList()
 	} else {
 		command.Action, err = model.GetAction(actionArg)
+		fmt.Println("---- SELECTED ACTION ----\n---- ", command.Action.Name, " ----\n-----------------------------------------")
 		if err != nil {
 			return err
 		}
 	}
 
+	switch command.Action.Name {
+	case "GET":
+		fmt.Println("GET")
+		break
+	case "UPDATE":
+		fmt.Println("UPDATE")
+		service.UpdateResources(command)
+		break
+	case "DELETE":
+		fmt.Println("DELETE")
+		break
+	}
 	return nil
 }
 
