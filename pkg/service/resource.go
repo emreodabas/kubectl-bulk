@@ -3,48 +3,28 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/emreodabas/kubectl-bulk/pkg/interaction"
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
 	"github.com/emreodabas/kubectl-bulk/pkg/utils"
 	"io/ioutil"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"strings"
 )
 
-var clientSet *kubernetes.Clientset
-var dinamic dynamic.Interface
-
-const path = "/tmp/kubectl-bulk/.api-resource-cache.json"
-
-func getClientSet() (dynamic.Interface, *kubernetes.Clientset, error) {
-	if clientSet != nil && dinamic != nil {
-		return dinamic, clientSet, nil
-	}
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	configOverrides := &clientcmd.ConfigOverrides{}
-	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-
-	config, err := kubeConfig.ClientConfig()
-	if err != nil {
-		return nil, nil, fmt.Errorf("Kubernetes Client could not configured")
-	}
-
-	clientSet, err = kubernetes.NewForConfig(config)
-	dinamic, err = dynamic.NewForConfig(config)
-
-	if err != nil {
-		return nil, nil, fmt.Errorf("Kubernetes Client could not configured")
-	}
-
-	return dinamic, clientSet, nil
-}
-
 var resourceList []model.Resource
+
+func ResourceSelection(command *model.Command) error {
+
+	list, err := GetResourceList()
+	if err != nil {
+		return err
+	}
+	command.Resource = interaction.ShowResourceList(list)
+	return nil
+}
 
 func GetResourceList() ([]model.Resource, error) {
 	if cacheFileExist() {
@@ -162,6 +142,52 @@ func GetResource(resourceName string) (model.Resource, error) {
 	}
 	return model.Resource{}, fmt.Errorf(resourceName + " is not a valid resource.")
 }
+func GetNamespaces() ([]string, error) {
+	var res []string
+	res = append(res, "all-namespaces[-A]")
+	_, clientset, err := getClientSet()
+	if err != nil {
+		return nil, fmt.Errorf("K8s client could not created")
+	}
+	var next string
+
+	for {
+		list, _ := clientset.CoreV1().Namespaces().List(v1.ListOptions{
+			Limit:    250,
+			Continue: next,
+		})
+		for i := 0; i < len(list.Items); i++ {
+			res = append(res, list.Items[i].Name)
+		}
+
+		next = list.GetContinue()
+		if next == "" {
+			break
+		}
+	}
+	return res, nil
+}
+
+func SourceSelection(command *model.Command) error {
+	// filter or multi selection could be ask to user
+	var err error
+	if command.Resource.Namespaced {
+		namespaces, err := GetNamespaces()
+		command.Namespace = interaction.ShowList(namespaces)
+		if err != nil {
+
+			return fmt.Errorf("Namespace list could not fetch")
+		}
+		err = FetchInstances(command)
+	} else {
+		err = FetchInstances(command)
+	}
+	if err != nil {
+		return err
+	}
+	return err
+
+}
 
 func FetchInstances(command *model.Command) error {
 
@@ -227,78 +253,8 @@ func FetchInstances(command *model.Command) error {
 		}
 
 	}
-	command.List = utils.Unique(list)
-	return nil
-}
-
-func GetNamespaces() ([]string, error) {
-	var res []string
-	res = append(res, "all-namespaces[-A]")
-	_, clientset, err := getClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("K8s client could not created")
-	}
-	var next string
-
-	for {
-		list, _ := clientset.CoreV1().Namespaces().List(v1.ListOptions{
-			Limit:    250,
-			Continue: next,
-		})
-		for i := 0; i < len(list.Items); i++ {
-			res = append(res, list.Items[i].Name)
-		}
-
-		next = list.GetContinue()
-		if next == "" {
-			break
-		}
-	}
-	return res, nil
-}
-
-func UpdateResources(command model.Command) error {
-
-	/*
-		setAnnotations
-		setLabels
-		updateUnstructred Content
-		 	specs
-
-	*/
-
-	clientset, _, err := getClientSet()
-	resource := command.Resource
-
-	if err != nil {
-		return err
-	}
-	for i := 0; i < len(resource.GroupVersion); i++ {
-		gv := resource.GroupVersion[i]
-		meta := v1.TypeMeta{
-			Kind:       resource.Kind,
-			APIVersion: gv.Version,
-		}
-		options := v1.UpdateOptions{
-			TypeMeta:     meta,
-			DryRun:       nil,
-			FieldManager: "",
-		}
-
-		resourceInterface := clientset.Resource(schema.GroupVersionResource{
-			Group:    gv.Group,
-			Version:  gv.Version,
-			Resource: resource.Name,
-		})
-
-		list := command.List
-		for i := 0; i < len(list); i++ {
-			resourceInterface.Update(&list[i], options)
-			if err != nil {
-				return err
-			}
-		}
-
+	if list != nil {
+		command.List = utils.Unique(list)
 	}
 	return nil
 }

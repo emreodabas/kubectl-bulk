@@ -35,27 +35,23 @@ func Prompt(prompt string, args ...interface{}) string {
 }
 
 func ShowActionList() model.Action {
-	actions, err := model.Actionlist()
-	if err != nil {
-		panic("json could not read")
-	}
 	idx, err := fuzzyfinder.FindMulti(
-		actions,
+		model.Actionlist,
 		func(i int) string {
-			return actions[i].Name
+			return model.Actionlist[i].Name
 		},
 		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
 			if i == -1 {
 				return ""
 			}
 			return fmt.Sprintf("Name: %s \nDescription: %s",
-				strings.SplitAfter(actions[i].Name, "> ")[0],
-				actions[i].Descriptions)
+				strings.SplitAfter(model.Actionlist[i].Name, "> ")[0],
+				model.Actionlist[i].Descriptions)
 		}))
 	if err != nil {
 		log.Fatal(err)
 	}
-	return actions[idx[0]]
+	return model.Actionlist[idx[0]]
 }
 
 func ShowResourceList(list []model.Resource) model.Resource {
@@ -74,6 +70,7 @@ func ShowResourceList(list []model.Resource) model.Resource {
 		}))
 	if err != nil {
 		log.Fatal(err)
+		panic(err)
 	}
 	return list[idx[0]]
 }
@@ -137,9 +134,3 @@ func ShowUnstructuredList(list []unstructured.Unstructured, selectList []string)
 	survey.AskOne(prompt, &result)
 	return result
 }
-
-//func getPromtValue(info string) string {
-//
-//
-//	return ""
-//}

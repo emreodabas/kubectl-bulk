@@ -15,7 +15,7 @@ func DoFilter(command *model.Command) error {
 	switch command.Filter.Name {
 	//TODO label is not working
 	case "label":
-		err := promptLabel(command)
+		err := promptLabelSelector(command)
 		if err != nil {
 			return err
 		}
@@ -28,7 +28,7 @@ func DoFilter(command *model.Command) error {
 		}
 		break
 	case "multi-select":
-		promptMultiSelect(command)
+		multiResourceSelect(command)
 		break
 	case "none":
 		fmt.Println("No Filter selected")
@@ -38,7 +38,7 @@ func DoFilter(command *model.Command) error {
 	return nil
 }
 
-func promptLabel(command *model.Command) error {
+func promptLabelSelector(command *model.Command) error {
 	for {
 		prompt := interaction.Prompt("Define label selector!! \n Samples: \n -- environment=production,tier=frontend \n -- env in  (production, development) \n")
 		command.Label = prompt
@@ -78,7 +78,7 @@ func promptFieldSelector(command *model.Command) error {
 	return nil
 }
 
-func promptMultiSelect(command *model.Command) error {
+func multiResourceSelect(command *model.Command) error {
 
 	var resultStr []string
 	var result []unstructured.Unstructured
@@ -104,5 +104,24 @@ func promptMultiSelect(command *model.Command) error {
 		result = append(result, command.List[atoi])
 	}
 	command.List = result
+	return nil
+}
+
+func Filter(command *model.Command) error {
+	var err error
+	command.Filter = interaction.ShowFilterList(model.FilterList)
+	err = DoFilter(command)
+	if err != nil {
+		return err
+	}
+	var selection = []string{"action time", "more filter"}
+
+	if interaction.ShowUnstructuredList(command.List, selection) == "more filter" {
+		fmt.Println("CAREFUL--> if you select previous FILTERS it will be OVERRIDED.")
+		err = Filter(command)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
