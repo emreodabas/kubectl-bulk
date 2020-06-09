@@ -13,16 +13,16 @@ import (
 	"strings"
 )
 
-func Confirm(promptValue string, args ...interface{}) bool {
-	for {
-		switch Prompt(promptValue, args...) {
-		case "Yes", "yes", "y", "Y":
-			return true
-		case "No", "no", "n", "N":
-			return false
-		}
-	}
-}
+//func Confirm(promptValue string, args ...interface{}) bool {
+//	for {
+//		switch Prompt(promptValue, args...) {
+//		case "Yes", "yes", "y", "Y":
+//			return true
+//		case "No", "no", "n", "N":
+//			return false
+//		}
+//	}
+//}
 
 func Prompt(prompt string, args ...interface{}) string {
 	var s string
@@ -112,6 +112,24 @@ func ShowList(list []string) string {
 		log.Fatal(err)
 	}
 	return list[idx[0]]
+}
+func ShowLists(list [][]string) string {
+	idx, err := fuzzyfinder.FindMulti(
+		list,
+		func(i int) string {
+			return list[i][0]
+		},
+		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
+			if i == -1 {
+				return ""
+			}
+			return fmt.Sprintf("Name: %s ",
+				strings.SplitAfter(list[i][1], "> ")[0])
+		}))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return list[idx[0]][0]
 }
 
 func ShowUnstructuredList(list []unstructured.Unstructured, selectList []string) string {

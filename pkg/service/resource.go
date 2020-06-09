@@ -42,6 +42,7 @@ func GetResourceList() ([]model.Resource, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	resources, _ := clientset.ServerPreferredResources()
 
 	for _, res := range resources {
@@ -212,7 +213,6 @@ func FetchInstances(command *model.Command) error {
 	if command.FieldSelector != "" {
 		options.FieldSelector = command.FieldSelector
 	}
-
 	for i := 0; i < len(resource.GroupVersion); i++ {
 		gv := resource.GroupVersion[i]
 

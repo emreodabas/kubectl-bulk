@@ -16,6 +16,8 @@ var (
 )
 
 func NewBulkCommand(streams genericclioptions.IOStreams) *cobra.Command {
+
+	// kubectl history and run could be an option
 	cmd := &cobra.Command{
 		Use:          "kubectl bulk GET|UPDATE|DELETE|LIST|REMOVE| <any resource>",
 		SilenceUsage: true,
