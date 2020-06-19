@@ -22,3 +22,11 @@ func Unique(unstructureds *unstructured.UnstructuredList) []unstructured.Unstruc
 	}
 	return list
 }
+
+func Keys(list map[string]string) []string {
+	var keys []string
+	for k, _ := range list {
+		keys = append(keys, k)
+	}
+	return keys
+}

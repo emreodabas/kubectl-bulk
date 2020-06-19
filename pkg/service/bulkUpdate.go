@@ -8,6 +8,9 @@ import (
 	"github.com/emreodabas/kubectl-bulk/pkg/utils"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -60,7 +63,8 @@ func UpdateResources(command *model.Command) error {
 		}
 		survey.AskOne(prompt, &removedItems)
 	case "[add] [specs]":
-		break
+		selection := getOneLevelOfSpecs(command)
+		definedValues = interaction.Prompt("Define spec  \"%s\" ", selection)
 	case "[update] [specs]":
 		keys := getSpecs(command)
 		selection := interaction.ShowList(keys)
@@ -114,30 +118,86 @@ func getAnnotations(command *model.Command) []string {
 
 func getSpecs(command *model.Command) []string {
 	var list = command.List
-	var specList []string
+	specTree := make(map[string]string)
+	for i := 0; i < len(list); i++ {
+		content := list[i].UnstructuredContent()
+		specs := content["spec"]
+		m := specs.(map[string]interface{})
+		appendSpecToList(m, specTree, "")
+	}
+
+	keys := utils.Keys(specTree)
+	sort.Strings(keys)
+	return keys
+}
+
+func getOneLevelOfSpecs(command *model.Command) string {
+	var list = command.List
+	specTree := make(map[string]interface{})
 	for i := 0; i < len(list); i++ {
 		content := list[i].UnstructuredContent()
 		specs := content["spec"]
 		m := specs.(map[string]interface{})
 		for k, v := range m {
-			switch typ := v.(type) {
-			case map[string]interface{}:
-				//TODO tree structured spec could be better to show select and update
-				appendSpec(nil, nil)
-			case string:
-				fmt.Println(typ)
-			}
+			specTree[k] = v
+		}
+	}
+	return selectSpecField(specTree)
 
-			if !utils.Contains(specList, k) {
-				specList = append(specList, k)
+}
+
+func selectSpecField(obj interface{}) string {
+
+	keys := make(map[string]interface{})
+	var keyValues []string
+	switch typ := obj.(type) {
+	case interface{}:
+		vv := reflect.ValueOf(typ)
+		if vv.Kind() == reflect.Map {
+			for _, maps := range vv.MapKeys() {
+				keys[maps.String()] = vv.MapIndex(maps).Interface()
+			}
+			for k, _ := range keys {
+				keyValues = append(keyValues, k)
+			}
+			sort.Strings(keyValues)
+			selection := interaction.ShowList(keyValues)
+			selectSpecField(keys[selection])
+		}
+	case string:
+		return fmt.Sprint(typ)
+	default:
+		return fmt.Sprint(typ)
+	}
+
+	return fmt.Sprint(obj)
+}
+func appendSpecToList(obj interface{}, specTree map[string]string, key string) {
+	//tree
+	//var isMap = false
+	//for k, v := range obj {
+
+	switch typ := obj.(type) {
+	case map[string]interface{}:
+		//TODO tree structured spec could be better to show select and update
+		for k, v := range typ {
+			key = k + "∟--" + key
+			appendSpecToList(v, specTree, key)
+		}
+	case string:
+		specTree[key] = typ
+	case bool:
+		specTree[key] = strconv.FormatBool(typ)
+	case int:
+		specTree[key] = strconv.Itoa(typ)
+	case interface{}:
+		vv := reflect.ValueOf(typ)
+		if vv.Kind() == reflect.Map {
+			for _, maps := range vv.MapKeys() {
+				appendSpecToList(maps, specTree, key)
 			}
 		}
 	}
-	return specList
-}
-
-func appendSpec(obj map[string]interface{}, list map[string]string) {
-	//tree
 }
 
 func updateResources(command *model.Command, actionType string, values map[string]string, removedValues []string) error {

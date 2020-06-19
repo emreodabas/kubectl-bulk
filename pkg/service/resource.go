@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/emreodabas/kubectl-bulk/pkg/interaction"
@@ -15,6 +16,8 @@ import (
 )
 
 var resourceList []model.Resource
+
+const path = ".api-resource-cache.json"
 
 func ResourceSelection(command *model.Command) error {
 
@@ -86,15 +89,32 @@ func GetResourceList() ([]model.Resource, error) {
 }
 
 func saveResourcelist(resourceList []model.Resource) {
+	//resources := model.Resources{Resources: resourceList}
+	_, err := WriteDataToFileAsJSON(resourceList, path)
+	if err != nil {
+		fmt.Println(err)
+	}
+}
 
-	marshal, _ := json.Marshal(resourceList)
+func WriteDataToFileAsJSON(data interface{}, filedir string) (int, error) {
+	//write data as buffer to json encoder
+	buffer := new(bytes.Buffer)
+	encoder := json.NewEncoder(buffer)
+	encoder.SetIndent("", "\t")
 
-	f, _ := os.Create(path)
-	defer f.Close()
-
-	f.Write(marshal)
-	f.Sync()
-
+	err := encoder.Encode(data)
+	if err != nil {
+		return 0, err
+	}
+	file, err := os.OpenFile(filedir, os.O_RDWR|os.O_CREATE, 0755)
+	if err != nil {
+		return 0, err
+	}
+	n, err := file.Write(buffer.Bytes())
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func cacheFileExist() bool {

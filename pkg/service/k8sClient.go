@@ -10,8 +10,6 @@ import (
 var clientSet *kubernetes.Clientset
 var dinamic dynamic.Interface
 
-const path = "/tmp/kubectl-bulk/.api-resource-cache.json"
-
 func getClientSet() (dynamic.Interface, *kubernetes.Clientset, error) {
 	if clientSet != nil && dinamic != nil {
 		return dinamic, clientSet, nil
