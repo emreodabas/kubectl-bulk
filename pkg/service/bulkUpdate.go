@@ -232,6 +232,9 @@ func updateResources(command *model.Command, actionType string, values map[strin
 			} else if strings.Contains(actionType, "annotation") {
 				valueList = list[i].GetAnnotations()
 			}
+			if valueList == nil {
+				valueList = make(map[string]string)
+			}
 
 			if strings.Contains(actionType, "add") {
 				for k, v := range values {
