@@ -13,7 +13,3 @@ type Resource struct {
 	GroupVersionKind schema.GroupVersionKind `json:"gvk"`
 	GroupVersion     []schema.GroupVersion   `json:"gv"`
 }
-
-type Resources struct {
-	Resources []Resource `json:"resources"`
-}

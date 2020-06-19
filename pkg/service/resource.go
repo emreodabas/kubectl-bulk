@@ -17,6 +17,7 @@ import (
 
 var resourceList []model.Resource
 
+// need to dynamic be for kubectl context and fixed in a path
 const path = ".api-resource-cache.json"
 
 func ResourceSelection(command *model.Command) error {
@@ -106,7 +107,7 @@ func WriteDataToFileAsJSON(data interface{}, filedir string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	file, err := os.OpenFile(filedir, os.O_RDWR|os.O_CREATE, 0755)
+	file, err := os.OpenFile(filedir, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return 0, err
 	}
