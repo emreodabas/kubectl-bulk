@@ -13,7 +13,6 @@ require (
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/ktr0731/go-fuzzyfinder v0.2.1
 	github.com/spf13/cobra v0.0.5
-	github.com/spf13/pflag v1.0.5
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413 // indirect
 	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553 // indirect
 	golang.org/x/oauth2 v0.0.0-20191202225959-858c2ad4c8b6 // indirect
@@ -22,11 +21,8 @@ require (
 	google.golang.org/appengine v1.6.1 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/yaml.v2 v2.2.7 // indirect
-	k8s.io/api v0.17.0
 	k8s.io/apimachinery v0.17.0
 	k8s.io/cli-runtime v0.17.0
 	k8s.io/client-go v0.17.0
-	k8s.io/sample-cli-plugin v0.17.0
 	k8s.io/utils v0.0.0-20191218082557-f07c713de883 // indirect
-	sigs.k8s.io/kustomize v2.0.3+incompatible
 )

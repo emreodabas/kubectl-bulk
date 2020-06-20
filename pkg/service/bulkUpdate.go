@@ -23,19 +23,19 @@ func UpdateResources(command *model.Command) error {
 		 	[specs]
 
 	*/
-	var removedItems = []string{}
+	var items = []string{}
 	var definedValues = ""
-	changedValues := make(map[string]string)
+	values := make(map[string]string)
 	selectedPreference := interaction.ShowLists(updatePreference)
 	switch selectedPreference {
 	case "[update] [labels]":
 		keys := getLabelKeys(command)
 		selection := interaction.ShowList(keys)
 		definedValues = interaction.Prompt("Define value for label \"%s\" ", selection)
-		changedValues[selection] = definedValues
+		values[selection] = definedValues
 	case "[add] [labels]":
 		definedValues = interaction.Prompt("Define your new label like env=prod,app=nginx ")
-		valueToMap(definedValues, changedValues)
+		valueToMap(definedValues, values)
 
 	case "[remove] [labels]":
 		keys := getLabelKeys(command)
@@ -44,16 +44,16 @@ func UpdateResources(command *model.Command) error {
 			Options:  keys,
 			PageSize: 20,
 		}
-		survey.AskOne(prompt, &removedItems)
+		survey.AskOne(prompt, &items)
 
 	case "[add] [annotations]":
 		definedValues = interaction.Prompt("Define your new annotations like key1=value,key2=value ")
-		valueToMap(definedValues, changedValues)
+		valueToMap(definedValues, values)
 	case "[update] [annotations]":
 		keys := getAnnotations(command)
 		selection := interaction.ShowList(keys)
 		definedValues = interaction.Prompt("Define value for annotations \"%s\" ", selection)
-		changedValues[selection] = definedValues
+		values[selection] = definedValues
 	case "[remove] [annotations]":
 		keys := getAnnotations(command)
 		prompt := &survey.MultiSelect{
@@ -61,21 +61,18 @@ func UpdateResources(command *model.Command) error {
 			Options:  keys,
 			PageSize: 20,
 		}
-		survey.AskOne(prompt, &removedItems)
+		survey.AskOne(prompt, &items)
 	case "[add] [specs]":
-		selection := getOneLevelOfSpecs(command)
-		definedValues = interaction.Prompt("Define spec  \"%s\" ", selection)
+		getOneLevelOfSpecs(command)
+		definedValues = interaction.Prompt("Define spec  \"%s\" ", strings.Join(command.SelectedSpec, "."))
 	case "[update] [specs]":
-		keys := getSpecs(command)
-		selection := interaction.ShowList(keys)
-		definedValues = interaction.Prompt("Define spec  \"%s\" ", selection)
-		changedValues[selection] = definedValues
-		break
+		getOneLevelOfSpecs(command)
+		definedValues = interaction.Prompt("Define spec  \"%s\" ", strings.Join(command.SelectedSpec, "."))
+		values["value"] = definedValues
 	case "[remove] [specs]":
-		break
 
 	}
-	updateResources(command, selectedPreference, changedValues, removedItems)
+	updateResources(command, selectedPreference, values, items)
 
 	return nil
 }
@@ -131,7 +128,7 @@ func getSpecs(command *model.Command) []string {
 	return keys
 }
 
-func getOneLevelOfSpecs(command *model.Command) string {
+func getOneLevelOfSpecs(command *model.Command) {
 	var list = command.List
 	specTree := make(map[string]interface{})
 	for i := 0; i < len(list); i++ {
@@ -142,17 +139,20 @@ func getOneLevelOfSpecs(command *model.Command) string {
 			specTree[k] = v
 		}
 	}
-	return selectSpecField(specTree)
 
+	command.SelectedSpec = append(command.SelectedSpec, "spec")
+	selectSpecField(specTree, command)
 }
 
-func selectSpecField(obj interface{}) string {
+func selectSpecField(obj interface{}, command *model.Command) {
 
 	keys := make(map[string]interface{})
 	var keyValues []string
+	var selection string
 	switch typ := obj.(type) {
 	case interface{}:
 		vv := reflect.ValueOf(typ)
+		fmt.Println(vv.Kind())
 		if vv.Kind() == reflect.Map {
 			for _, maps := range vv.MapKeys() {
 				keys[maps.String()] = vv.MapIndex(maps).Interface()
@@ -160,18 +160,46 @@ func selectSpecField(obj interface{}) string {
 			for k, _ := range keys {
 				keyValues = append(keyValues, k)
 			}
-			sort.Strings(keyValues)
-			selection := interaction.ShowList(keyValues)
-			selectSpecField(keys[selection])
+			if len(keyValues) > 1 {
+				sort.Strings(keyValues)
+				selection = interaction.ShowList(keyValues)
+			} else if len(keyValues) == 0 {
+				selection = keyValues[0]
+			}
+			fmt.Print("." + selection)
+			command.SelectedSpec = append(command.SelectedSpec, selection)
+			selectSpecField(keys[selection], command)
+		} else if vv.Kind() == reflect.Slice {
+			//command.SelectedSpec[len(command.SelectedSpec)-1] = command.SelectedSpec[len(command.SelectedSpec)-1] + "[0]"
+			command.SelectedSpec = append(command.SelectedSpec, "[0]")
+			selectSpecField(vv.Index(0).Interface(), command)
+		} else {
+			fmt.Println("Selected Field Type", vv.Kind())
 		}
-	case string:
-		return fmt.Sprint(typ)
-	default:
-		return fmt.Sprint(typ)
 	}
-
-	return fmt.Sprint(obj)
 }
+
+func updateSpecField(item interface{}, selection []string, value string) interface{} {
+	if len(selection) > 0 {
+		switch typ := item.(type) {
+		case interface{}:
+			vv := reflect.ValueOf(typ)
+			fmt.Println(vv.Kind())
+			if vv.Kind() == reflect.Map {
+				child := vv.MapIndex(reflect.ValueOf(selection[0])).Interface()
+				resp := updateSpecField(child, selection[1:], value)
+				vv.SetMapIndex(reflect.ValueOf(selection[0]), reflect.ValueOf(resp))
+			} else if vv.Kind() == reflect.Slice {
+				resp := updateSpecField(vv.Index(0).Interface(), selection[1:], value)
+				vv.Index(0).Set(reflect.ValueOf(resp))
+			}
+		}
+	} else {
+		item = value
+	}
+	return item
+}
+
 func appendSpecToList(obj interface{}, specTree map[string]string, key string) {
 	//tree
 	//var isMap = false
@@ -179,7 +207,7 @@ func appendSpecToList(obj interface{}, specTree map[string]string, key string) {
 
 	switch typ := obj.(type) {
 	case map[string]interface{}:
-		//TODO tree structured spec could be better to show select and update
+		//TODO iterative selection is better for ux
 		for k, v := range typ {
 			key = k + "∟--" + key
 			appendSpecToList(v, specTree, key)
@@ -200,7 +228,7 @@ func appendSpecToList(obj interface{}, specTree map[string]string, key string) {
 	}
 }
 
-func updateResources(command *model.Command, actionType string, values map[string]string, removedValues []string) error {
+func updateResources(command *model.Command, actionType string, values map[string]string, items []string) error {
 	clientset, _, err := getClientSet()
 	resource := command.Resource
 
@@ -227,35 +255,46 @@ func updateResources(command *model.Command, actionType string, values map[strin
 		list := command.List
 		for i := 0; i < len(list); i++ {
 
-			if strings.Contains(actionType, "label") {
-				valueList = list[i].GetLabels()
-			} else if strings.Contains(actionType, "annotation") {
-				valueList = list[i].GetAnnotations()
-			}
-			if valueList == nil {
-				valueList = make(map[string]string)
-			}
-
-			if strings.Contains(actionType, "add") {
-				for k, v := range values {
-					valueList[k] = v
+			if strings.Contains(actionType, "spec") {
+				if strings.Contains(actionType, "add") {
+				} else if strings.Contains(actionType, "update") {
+					field := updateSpecField(list[i].UnstructuredContent(), command.SelectedSpec, values["value"])
+					list[i].SetUnstructuredContent(field.(map[string]interface{}))
+				} else if strings.Contains(actionType, "remove") {
 				}
-			} else if strings.Contains(actionType, "update") {
-				for k, v := range values {
-					if valueList[k] != "" {
+
+			} else {
+				if strings.Contains(actionType, "label") {
+					valueList = list[i].GetLabels()
+				} else if strings.Contains(actionType, "annotation") {
+					valueList = list[i].GetAnnotations()
+				}
+				if valueList == nil {
+					valueList = make(map[string]string)
+				}
+
+				if strings.Contains(actionType, "add") {
+					for k, v := range values {
 						valueList[k] = v
 					}
+				} else if strings.Contains(actionType, "update") {
+					for k, v := range values {
+						if valueList[k] != "" {
+							valueList[k] = v
+						}
+					}
+				} else if strings.Contains(actionType, "remove") {
+					for i := 0; i < len(items); i++ {
+						delete(valueList, items[i])
+					}
 				}
-			} else if strings.Contains(actionType, "remove") {
-				for i := 0; i < len(removedValues); i++ {
-					delete(valueList, removedValues[i])
+				if strings.Contains(actionType, "label") {
+					list[i].SetLabels(valueList)
+				} else if strings.Contains(actionType, "annotations") {
+					list[i].SetAnnotations(valueList)
 				}
 			}
-			if strings.Contains(actionType, "label") {
-				list[i].SetLabels(valueList)
-			} else if strings.Contains(actionType, "annotations") {
-				list[i].SetAnnotations(valueList)
-			}
+
 			if resource.Namespaced {
 				_, err := resourceInterface.Namespace(command.Namespace).Update(&list[i], options)
 				if err != nil {
@@ -283,7 +322,4 @@ var updatePreference = [][]string{
 	{"[update] [labels]", "these feature update labels of selected resource\n IF LABEL NOT EXIST NO CHANGE"},
 	{"[update] [annotations]", "these feature update annotation of selected resource\n IF ANNOTATION NOT EXIST NO CHANGE"},
 	{"[update] [specs]", "these feature update specs of selected resource\n IF LABEL NOT EXIST NO CHANGE"},
-	//{"[upsert] [labels]", "these feature update labels of selected resource\n IF LABEL NOT EXIST IT WIL BE ADDED"},
-	//{"[upsert] [annotations]", "these feature update annotation of selected resource\n IF ANNOTATION NOT EXIST IT WIL BE ADDED"},
-	//{"[upsert] [specs]", "these feature update spec of selected resource\n IF SPEC NOT EXIST IT WIL BE ADDED"},
 }

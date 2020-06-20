@@ -32,6 +32,7 @@ func NewBulkCommand(streams genericclioptions.IOStreams) *cobra.Command {
 
 func run(_ *cobra.Command, args []string) error {
 	//TODO logging and test need to be done
+	// add cache invalidator command
 	var actionArg, resourceArg string
 	var command model.Command
 	var err error

@@ -1,10 +1,11 @@
 package main
 
 import (
+	"os"
+
 	"github.com/emreodabas/kubectl-bulk/pkg/cmd"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	"os"
 )
 
 func main() {

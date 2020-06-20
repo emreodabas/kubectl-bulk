@@ -14,4 +14,5 @@ type Command struct {
 	Filter          Filter
 	SelectedFilters []Filter
 	UpdatedList     []unstructured.Unstructured
+	SelectedSpec    []string
 }
