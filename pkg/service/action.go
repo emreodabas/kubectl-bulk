@@ -9,8 +9,6 @@ import (
 
 func ActionSelection(arg string, command *model.Command) error {
 	var err error
-	var abc string
-	fmt.Println(abc)
 	//action time
 	if arg == "" {
 		command.Action = interaction.ShowActionList()

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/emreodabas/kubectl-bulk/pkg/interaction"
@@ -66,14 +67,21 @@ func UpdateResources(command *model.Command) error {
 		getOneLevelOfSpecs(command)
 		definedValues = interaction.Prompt("Define spec  \"%s\" ", strings.Join(command.SelectedSpec, "."))
 	case "[update] [specs]":
-		getOneLevelOfSpecs(command)
-		definedValues = interaction.Prompt("Define spec  \"%s\" ", strings.Join(command.SelectedSpec, "."))
+		isObject := getOneLevelOfSpecs(command)
+		if isObject {
+			definedValues = interaction.Prompt("Define spec \"%s\" \n use comma for multi value \n use \"\" for strings -> name=\"abc\" \n for numerics -> replicas=3", strings.Join(command.SelectedSpec, "."))
+		} else {
+			definedValues = interaction.Prompt("Define spec value for \"%s\" ", strings.Join(command.SelectedSpec, "."))
+		}
 		values["value"] = definedValues
 	case "[remove] [specs]":
-
+		getOneLevelOfSpecs(command)
 	}
-	updateResources(command, selectedPreference, values, items)
+	err := updateResources(command, selectedPreference, values, items)
 
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -83,6 +91,13 @@ func valueToMap(definedValues string, changedLabels map[string]string) {
 		label := strings.Split(item, "=")
 		if len(label) == 2 {
 			changedLabels[label[0]] = label[1]
+		} else {
+			label := strings.Split(item, ":")
+			if len(label) == 2 {
+				changedLabels[label[0]] = label[1]
+			} else {
+				fmt.Errorf("Parsing problem")
+			}
 		}
 	}
 }
@@ -128,7 +143,7 @@ func getSpecs(command *model.Command) []string {
 	return keys
 }
 
-func getOneLevelOfSpecs(command *model.Command) {
+func getOneLevelOfSpecs(command *model.Command) bool {
 	var list = command.List
 	specTree := make(map[string]interface{})
 	for i := 0; i < len(list); i++ {
@@ -141,18 +156,17 @@ func getOneLevelOfSpecs(command *model.Command) {
 	}
 
 	command.SelectedSpec = append(command.SelectedSpec, "spec")
-	selectSpecField(specTree, command)
+	return selectSpecField(specTree, command)
 }
 
-func selectSpecField(obj interface{}, command *model.Command) {
-
+func selectSpecField(obj interface{}, command *model.Command) bool {
+	var ret = false
 	keys := make(map[string]interface{})
 	var keyValues []string
 	var selection string
 	switch typ := obj.(type) {
 	case interface{}:
 		vv := reflect.ValueOf(typ)
-		fmt.Println(vv.Kind())
 		if vv.Kind() == reflect.Map {
 			for _, maps := range vv.MapKeys() {
 				keys[maps.String()] = vv.MapIndex(maps).Interface()
@@ -160,44 +174,112 @@ func selectSpecField(obj interface{}, command *model.Command) {
 			for k, _ := range keys {
 				keyValues = append(keyValues, k)
 			}
-			if len(keyValues) > 1 {
+			if len(keyValues) > 0 {
 				sort.Strings(keyValues)
 				selection = interaction.ShowList(keyValues)
 			} else if len(keyValues) == 0 {
-				selection = keyValues[0]
+				return true
 			}
-			fmt.Print("." + selection)
 			command.SelectedSpec = append(command.SelectedSpec, selection)
-			selectSpecField(keys[selection], command)
+			ret = selectSpecField(keys[selection], command)
 		} else if vv.Kind() == reflect.Slice {
-			//command.SelectedSpec[len(command.SelectedSpec)-1] = command.SelectedSpec[len(command.SelectedSpec)-1] + "[0]"
 			command.SelectedSpec = append(command.SelectedSpec, "[0]")
-			selectSpecField(vv.Index(0).Interface(), command)
-		} else {
-			fmt.Println("Selected Field Type", vv.Kind())
+			ret = selectSpecField(vv.Index(0).Interface(), command)
 		}
 	}
+	return ret
 }
 
-func updateSpecField(item interface{}, selection []string, value string) interface{} {
+func updateSpecField(item interface{}, selection []string, value string) (interface{}, error) {
+
 	if len(selection) > 0 {
 		switch typ := item.(type) {
 		case interface{}:
 			vv := reflect.ValueOf(typ)
-			fmt.Println(vv.Kind())
 			if vv.Kind() == reflect.Map {
 				child := vv.MapIndex(reflect.ValueOf(selection[0])).Interface()
-				resp := updateSpecField(child, selection[1:], value)
+				resp, err := updateSpecField(child, selection[1:], value)
+				if err != nil {
+					return nil, err
+				}
 				vv.SetMapIndex(reflect.ValueOf(selection[0]), reflect.ValueOf(resp))
 			} else if vv.Kind() == reflect.Slice {
-				resp := updateSpecField(vv.Index(0).Interface(), selection[1:], value)
+				resp, err := updateSpecField(vv.Index(0).Interface(), selection[1:], value)
+				if err != nil {
+					return nil, err
+				}
 				vv.Index(0).Set(reflect.ValueOf(resp))
 			}
 		}
 	} else {
-		item = value
+		var err error
+		switch item.(type) {
+		case string:
+			item = value
+		case int, int64:
+			item, err = strconv.Atoi(value)
+			if err != nil {
+				return nil, err
+			}
+		case interface{}:
+			mapValue := make(map[string]string)
+			mapInterface := make(map[string]interface{})
+			valueToMap(value, mapValue)
+			for k, v := range mapValue {
+				if strings.Contains(v, "\"") {
+					mapInterface[k] = v
+				} else if strings.Contains(v, "{") {
+					strings.ReplaceAll(v, "{", "")
+					strings.ReplaceAll(v, "}", "")
+					if strings.Trim(v, "") == "" {
+						var a interface{}
+						mapInterface[k] = a
+					} else {
+						var i map[string]interface{}
+						json.Unmarshal([]byte(v), &i)
+						mapInterface[k] = i
+					}
+				} else {
+					mapInterface[k], _ = strconv.Atoi(v)
+				}
+			}
+			item = mapInterface
+		default:
+			item = value
+		}
+
 	}
-	return item
+	return item, nil
+}
+
+func removeSpecField(item interface{}, selection []string) (interface{}, error) {
+
+	if len(selection) > 0 {
+		switch typ := item.(type) {
+		case interface{}:
+			vv := reflect.ValueOf(typ)
+			if vv.Kind() == reflect.Map {
+				if len(selection) == 1 {
+					vv.SetMapIndex(reflect.ValueOf(selection[0]), reflect.Value{})
+					return vv, nil
+				} else {
+					child := vv.MapIndex(reflect.ValueOf(selection[0])).Interface()
+					resp, err := removeSpecField(child, selection[1:])
+					if err != nil {
+						return nil, err
+					}
+					vv.SetMapIndex(reflect.ValueOf(selection[0]), reflect.ValueOf(resp))
+				}
+			} else if vv.Kind() == reflect.Slice {
+				resp, err := removeSpecField(vv.Index(0).Interface(), selection[1:])
+				if err != nil {
+					return nil, err
+				}
+				vv.Index(0).Set(reflect.ValueOf(resp))
+			}
+		}
+	}
+	return item, nil
 }
 
 func appendSpecToList(obj interface{}, specTree map[string]string, key string) {
@@ -257,10 +339,21 @@ func updateResources(command *model.Command, actionType string, values map[strin
 
 			if strings.Contains(actionType, "spec") {
 				if strings.Contains(actionType, "add") {
+					fmt.Println("Adding Spec ->", strings.Join(command.SelectedSpec, "."), "to ", command.Resource.Name, " ", list[i].GetName())
 				} else if strings.Contains(actionType, "update") {
-					field := updateSpecField(list[i].UnstructuredContent(), command.SelectedSpec, values["value"])
+					fmt.Println("Updating Spec ->", strings.Join(command.SelectedSpec, "."), "to ", command.Resource.Name, " ", list[i].GetName())
+					field, err := updateSpecField(list[i].UnstructuredContent(), command.SelectedSpec, values["value"])
+					if err != nil {
+						return err
+					}
 					list[i].SetUnstructuredContent(field.(map[string]interface{}))
 				} else if strings.Contains(actionType, "remove") {
+					fmt.Println("Removing Spec ->", strings.Join(command.SelectedSpec, "."), "to ", command.Resource.Name, " ", list[i].GetName())
+					field, err := removeSpecField(list[i].UnstructuredContent(), command.SelectedSpec)
+					if err != nil {
+						return err
+					}
+					list[i].SetUnstructuredContent(field.(map[string]interface{}))
 				}
 
 			} else {

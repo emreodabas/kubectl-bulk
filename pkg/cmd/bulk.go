@@ -64,11 +64,13 @@ func run(_ *cobra.Command, args []string) error {
 		break
 	case "UPDATE":
 		fmt.Println("UPDATE")
-		service.UpdateResources(&command)
-		break
+		err = service.UpdateResources(&command)
 	case "DELETE":
 		fmt.Println("DELETE")
 		break
+	}
+	if err != nil {
+		fmt.Println(err)
 	}
 	return nil
 }
