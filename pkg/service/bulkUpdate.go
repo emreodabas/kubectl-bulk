@@ -17,13 +17,6 @@ import (
 
 func UpdateResources(command *model.Command) error {
 
-	/*
-		setAnnotations
-		setLabels
-		updateUnstructred Content
-		 	[specs]
-
-	*/
 	var items = []string{}
 	var definedValues = ""
 	values := make(map[string]string)
@@ -64,8 +57,9 @@ func UpdateResources(command *model.Command) error {
 		}
 		survey.AskOne(prompt, &items)
 	case "[add] [specs]":
-		getOneLevelOfSpecs(command)
-		definedValues = interaction.Prompt("Define spec  \"%s\" ", strings.Join(command.SelectedSpec, "."))
+		addIterateLevelOfSpecs(command)
+		definedValues = interaction.Prompt("Define spec  \"%s\" \n use comma for multi value \n use \"\" for strings -> name=\"abc\" \n for numerics -> replicas=3", strings.Join(command.SelectedSpec, "."))
+		valueToMap(definedValues, values)
 	case "[update] [specs]":
 		isObject := getOneLevelOfSpecs(command)
 		if isObject {
@@ -156,10 +150,10 @@ func getOneLevelOfSpecs(command *model.Command) bool {
 	}
 
 	command.SelectedSpec = append(command.SelectedSpec, "spec")
-	return selectSpecField(specTree, command)
+	return updateSpecFieldSelection(specTree, command)
 }
 
-func selectSpecField(obj interface{}, command *model.Command) bool {
+func updateSpecFieldSelection(obj interface{}, command *model.Command) bool {
 	var ret = false
 	keys := make(map[string]interface{})
 	var keyValues []string
@@ -181,13 +175,139 @@ func selectSpecField(obj interface{}, command *model.Command) bool {
 				return true
 			}
 			command.SelectedSpec = append(command.SelectedSpec, selection)
-			ret = selectSpecField(keys[selection], command)
+			ret = updateSpecFieldSelection(keys[selection], command)
 		} else if vv.Kind() == reflect.Slice {
 			command.SelectedSpec = append(command.SelectedSpec, "[0]")
-			ret = selectSpecField(vv.Index(0).Interface(), command)
+			ret = updateSpecFieldSelection(vv.Index(0).Interface(), command)
 		}
 	}
 	return ret
+}
+
+func addIterateLevelOfSpecs(command *model.Command) {
+	var list = command.List
+	specTree := make(map[string]interface{})
+	for i := 0; i < len(list); i++ {
+		content := list[i].UnstructuredContent()
+		specs := content["spec"]
+		m := specs.(map[string]interface{})
+		for k, v := range m {
+			specTree[k] = v
+		}
+	}
+
+	command.SelectedSpec = append(command.SelectedSpec, "spec")
+	addSpecFieldSelection(specTree, command)
+}
+
+func addSpecFieldSelection(obj interface{}, command *model.Command) {
+
+	keys := make(map[string]interface{})
+	var keyValues []string
+	var selection string
+	switch typ := obj.(type) {
+	case interface{}:
+		vv := reflect.ValueOf(typ)
+		if vv.Kind() == reflect.Map {
+			for _, maps := range vv.MapKeys() {
+				if hasChild(vv.MapIndex(maps).Interface()) {
+					keys[maps.String()] = vv.MapIndex(maps).Interface()
+				}
+			}
+			keys["<Add Here>"] = ""
+			for k, _ := range keys {
+				keyValues = append(keyValues, k)
+			}
+			sort.Strings(keyValues)
+			selection = interaction.ShowList(keyValues)
+			if selection == "<Add Here>" {
+				return
+			}
+			command.SelectedSpec = append(command.SelectedSpec, selection)
+			addSpecFieldSelection(keys[selection], command)
+		} else if vv.Kind() == reflect.Slice {
+			command.SelectedSpec = append(command.SelectedSpec, "[0]")
+			addSpecFieldSelection(vv.Index(0).Interface(), command)
+		}
+	}
+
+}
+
+func hasChild(obj interface{}) bool {
+	switch typ := obj.(type) {
+	case interface{}:
+		vv := reflect.ValueOf(typ)
+		if vv.Kind() == reflect.Map {
+			return true
+		} else if vv.Kind() == reflect.Slice {
+			return true
+		} else {
+			return false
+		}
+	default:
+		return false
+	}
+}
+
+func addSpecField(item interface{}, selection []string, values map[string]string) (interface{}, error) {
+
+	if len(selection) > 0 {
+		switch typ := item.(type) {
+		case interface{}:
+			vv := reflect.ValueOf(typ)
+			if vv.Kind() == reflect.Map {
+				child := vv.MapIndex(reflect.ValueOf(selection[0])).Interface()
+				resp, err := addSpecField(child, selection[1:], values)
+				if err != nil {
+					return nil, err
+				}
+				vv.SetMapIndex(reflect.ValueOf(selection[0]), reflect.ValueOf(resp))
+			} else if vv.Kind() == reflect.Slice {
+				resp, err := addSpecField(vv.Index(0).Interface(), selection[1:], values)
+				if err != nil {
+					return nil, err
+				}
+				vv.Index(0).Set(reflect.ValueOf(resp))
+			}
+		}
+	} else {
+		switch typ := item.(type) {
+		//append to existing values
+		case interface{}:
+			vv := reflect.ValueOf(typ)
+			if vv.Kind() == reflect.Map {
+				for k, v := range values {
+					vv.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
+				}
+				item = typ
+			}
+
+		// add new values
+		default:
+			mapInterface := make(map[string]interface{})
+			for k, v := range values {
+				if strings.Contains(v, "\"") {
+					mapInterface[k] = v
+					//TODO Object mapping need to be revised
+				} else if strings.Contains(v, "{") {
+					strings.ReplaceAll(v, "{", "")
+					strings.ReplaceAll(v, "}", "")
+					if strings.Trim(v, "") == "" {
+						var a interface{}
+						mapInterface[k] = a
+					} else {
+						var i map[string]interface{}
+						json.Unmarshal([]byte(v), &i)
+						mapInterface[k] = i
+					}
+				} else {
+					mapInterface[k], _ = strconv.Atoi(v)
+				}
+			}
+			item = mapInterface
+		}
+	}
+	return item, nil
 }
 
 func updateSpecField(item interface{}, selection []string, value string) (interface{}, error) {
@@ -228,6 +348,7 @@ func updateSpecField(item interface{}, selection []string, value string) (interf
 			for k, v := range mapValue {
 				if strings.Contains(v, "\"") {
 					mapInterface[k] = v
+					//TODO Object mapping need to be revised
 				} else if strings.Contains(v, "{") {
 					strings.ReplaceAll(v, "{", "")
 					strings.ReplaceAll(v, "}", "")
@@ -340,6 +461,11 @@ func updateResources(command *model.Command, actionType string, values map[strin
 			if strings.Contains(actionType, "spec") {
 				if strings.Contains(actionType, "add") {
 					fmt.Println("Adding Spec ->", strings.Join(command.SelectedSpec, "."), "to ", command.Resource.Name, " ", list[i].GetName())
+					field, err := addSpecField(list[i].UnstructuredContent(), command.SelectedSpec, values)
+					if err != nil {
+						return err
+					}
+					list[i].SetUnstructuredContent(field.(map[string]interface{}))
 				} else if strings.Contains(actionType, "update") {
 					fmt.Println("Updating Spec ->", strings.Join(command.SelectedSpec, "."), "to ", command.Resource.Name, " ", list[i].GetName())
 					field, err := updateSpecField(list[i].UnstructuredContent(), command.SelectedSpec, values["value"])
