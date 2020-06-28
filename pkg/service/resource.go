@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -223,16 +224,16 @@ func FetchInstances(command *model.Command) error {
 	}
 
 	var next string
-	options := v1.ListOptions{
+	listOptions := v1.ListOptions{
 		Limit:    250,
 		Continue: next,
 	}
-	if command.Label != "" {
-		options.LabelSelector = command.Label
+	if command.LabelFilter != "" {
+		listOptions.LabelSelector = command.LabelFilter
 	}
 
 	if command.FieldSelector != "" {
-		options.FieldSelector = command.FieldSelector
+		listOptions.FieldSelector = command.FieldSelector
 	}
 	for i := 0; i < len(resource.GroupVersion); i++ {
 		gv := resource.GroupVersion[i]
@@ -244,7 +245,7 @@ func FetchInstances(command *model.Command) error {
 		})
 		if namespace != "all-namespaces[-A]" {
 			for {
-				list, err = resourceInterface.Namespace(namespace).List(options)
+				list, err = resourceInterface.Namespace(namespace).List(listOptions)
 				if err != nil {
 					return err
 				}
@@ -256,7 +257,7 @@ func FetchInstances(command *model.Command) error {
 			}
 		} else {
 			for {
-				list, err = resourceInterface.List(options)
+				list, err = resourceInterface.List(listOptions)
 				if err != nil {
 					return err
 				}
@@ -274,8 +275,35 @@ func FetchInstances(command *model.Command) error {
 		}
 
 	}
-	if list != nil {
-		command.List = utils.Unique(list)
+
+	if res != nil {
+		var temp []unstructured.Unstructured
+		if len(command.GrepFilter) > 0 {
+			var grepFilter = command.GrepFilter
+			for i, item := range grepFilter {
+				if strings.Contains(item, "-i") {
+					item = strings.Trim(item, "-i")
+					item = strings.Trim(item, " ")
+					item = "(?i)" + item
+					grepFilter[i] = item
+				}
+			}
+			for _, item := range res {
+				marshalJSON, _ := item.MarshalJSON()
+				var allContains = true
+				for _, grep := range grepFilter {
+					match, _ := regexp.Match(grep, marshalJSON)
+					if !match {
+						allContains = false
+					}
+				}
+				if allContains {
+					temp = append(temp, item)
+				}
+			}
+			res = temp
+		}
+		command.List = utils.Unique(res)
 	}
 	return nil
 }

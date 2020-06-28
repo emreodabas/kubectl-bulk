@@ -1,6 +1,7 @@
 package interaction
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
@@ -9,6 +10,7 @@ import (
 	"github.com/ktr0731/go-fuzzyfinder"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -25,9 +27,11 @@ import (
 //}
 
 func Prompt(prompt string, args ...interface{}) string {
-	var s string
 	fmt.Printf(prompt+": ", args...)
-	_, err := fmt.Scanln(&s)
+	reader := bufio.NewReader(os.Stdin)
+	s, err := reader.ReadString('\n')
+	s = strings.Trim(s, "\n")
+	//_, err := fmt.Scanln(&s)
 	if err != nil {
 		fmt.Println("Prompt value could not read")
 	}

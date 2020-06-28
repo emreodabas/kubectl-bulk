@@ -61,10 +61,10 @@ func run(_ *cobra.Command, args []string) error {
 	switch command.Action.Name {
 	case "GET":
 		fmt.Println("GET")
-		break
+		err = service.BulkGetResources(&command)
 	case "UPDATE":
 		fmt.Println("UPDATE")
-		err = service.UpdateResources(&command)
+		err = service.BulkUpdateResources(&command)
 	case "DELETE":
 		fmt.Println("DELETE")
 		break

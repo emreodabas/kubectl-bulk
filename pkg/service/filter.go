@@ -5,6 +5,7 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/emreodabas/kubectl-bulk/pkg/interaction"
 	"github.com/emreodabas/kubectl-bulk/pkg/model"
+	"github.com/emreodabas/kubectl-bulk/pkg/utils"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"strconv"
 	"strings"
@@ -19,20 +20,21 @@ func DoFilter(command *model.Command) error {
 		if err != nil {
 			return err
 		}
-		break
 	case "field-selector":
 		//TODO
 		err := promptFieldSelector(command)
 		if err != nil {
 			return err
 		}
-		break
+	case "grep":
+		err := promptGrepSelector(command)
+		if err != nil {
+			return err
+		}
 	case "multi-select":
 		multiResourceSelect(command)
-		break
 	case "none":
 		fmt.Println("No Filter selected")
-		break
 	}
 	command.SelectedFilters = append(command.SelectedFilters, command.Filter)
 	return nil
@@ -41,15 +43,35 @@ func DoFilter(command *model.Command) error {
 func promptLabelSelector(command *model.Command) error {
 	for {
 		prompt := interaction.Prompt("Define label selector!! \n Samples: \n -- environment=production,tier=frontend \n -- env in  (production, development) \n")
-		command.Label = prompt
+		command.LabelFilter = prompt
 		err := FetchInstances(command)
 		if err != nil {
 			if strings.Contains(err.Error(), "exit") ||
 				strings.Contains(err.Error(), "quit") {
-				command.Label = ""
+				command.LabelFilter = ""
 				return nil
 			} else {
 				fmt.Println("Error occured", err, "\n please specify a valid label or you could exit with write [exit] or [quit]")
+			}
+		} else {
+			break
+		}
+	}
+	return nil
+}
+
+func promptGrepSelector(command *model.Command) error {
+	for {
+		prompt := interaction.Prompt(" Define text value for searching. add -i for ignoring case")
+		command.GrepFilter = append(command.GrepFilter, prompt)
+		err := FetchInstances(command)
+		if err != nil {
+			if strings.Contains(err.Error(), "exit") ||
+				strings.Contains(err.Error(), "quit") {
+				command.GrepFilter = utils.RemoveItem(command.GrepFilter, len(command.GrepFilter)-1)
+				return nil
+			} else {
+				fmt.Println("Error occured", err, "\n please specify a valid field selector or you could exit with write [exit] or [quit] ")
 			}
 		} else {
 			break

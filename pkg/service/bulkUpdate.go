@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-func UpdateResources(command *model.Command) error {
+func BulkUpdateResources(command *model.Command) error {
 
 	var items = []string{}
 	var definedValues = ""

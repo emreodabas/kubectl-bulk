@@ -6,8 +6,9 @@ import (
 
 type Command struct {
 	Namespace       string
-	Label           string
+	LabelFilter     string
 	FieldSelector   string
+	GrepFilter      []string
 	Action          Action
 	Resource        Resource
 	List            []unstructured.Unstructured
